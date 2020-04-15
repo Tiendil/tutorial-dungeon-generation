@@ -2,7 +2,7 @@
 import enum
 import random
 import argparse
-
+import collections
 
 from matplotlib import pyplot
 
@@ -165,15 +165,72 @@ class Room:
 
         return borders
 
+    def rectangle(self):
+        positions = self.block_positions()
+
+        min_x, max_x, min_y, max_y = 0, 0, 0, 0
+
+        for position in positions:
+            min_x = min(position.x, min_x)
+            min_y = min(position.y, min_y)
+            max_x = max(position.x, max_x)
+            max_y = max(position.y, max_y)
+
+        return min_x, min_y, max_x, max_y
+
+    def has_holes(self):
+        min_x, min_y, max_x, max_y = self.rectangle()
+
+        block_positions = self.block_positions()
+
+        all_positions = set()
+
+        # add additional empty cells around rectangle
+        # to guaranty connectedness
+        for x in range(min_x - 1, max_x + 2):
+            for y in range(min_y - 1, max_y + 2):
+                all_positions.add(Position(x, y))
+
+        all_positions -= block_positions
+
+        first_position = next(iter(all_positions))
+
+        queue = collections.deque()
+
+        queue.append(first_position)
+
+        while queue:
+            position = queue.popleft()
+
+            if position not in all_positions:
+                continue
+
+            queue.extend(position.neighbours())
+
+            all_positions.remove(position)
+
+        return bool(all_positions)
+
 
 #################
 # Generation code
 #################
 
-room = Room()
+def generate_room():
 
-for i in range(arguments.blocks):
-    room.expand()
+    room = Room()
+
+    for i in range(arguments.blocks):
+        room.expand()
+
+    return room
+
+
+room = None
+
+while room is None or room.has_holes():
+    print('try to generate room')
+    room = generate_room()
 
 
 ####################
