@@ -10,7 +10,8 @@ parser = argparse.ArgumentParser(description='Generate dungeon.')
 
 parser.add_argument('-f', '--filename', metavar='FILENAME', type=str, default='last.png', help='save result to file')
 parser.add_argument('-s', '--show', action='store_true', default=False, help='show result in window')
-parser.add_argument('-b', '--blocks', type=int, default=15, help='block in room')
+parser.add_argument('-b', '--blocks', type=int, default=10, help='blocks in room')
+parser.add_argument('-r', '--rooms', type=int, default=2, help='rooms in dungeon')
 
 arguments = parser.parse_args()
 
@@ -24,6 +25,14 @@ class DIRECTION(enum.Enum):
     RIGHT = 2
     UP = 3
     DOWN = 4
+
+
+#######
+# Utils
+#######
+
+def random_color():
+    return '#' + ''.join([random.choice('0123456789') for i in range(6)])
 
 
 ##############
@@ -129,10 +138,11 @@ class Block:
 
 
 class Room:
-    __slots__ = ('blocks',)
+    __slots__ = ('blocks', 'color')
 
     def __init__(self):
         self.blocks = [Block(Position(0, 0))]
+        self.color = random_color()
 
     def block_positions(self):
         return {block.position for block in self.blocks}
@@ -212,25 +222,39 @@ class Room:
         return bool(all_positions)
 
 
+class Dungeon:
+    __slots__ = ('rooms',)
+
+    def __init__(self):
+        self.rooms = []
+
+    def create_room(self, blocks):
+        room = Room()
+
+        for i in range(blocks):
+            room.expand()
+
+        return room
+
+    def expand(self, blocks):
+        room = None
+
+        while room is None or room.has_holes():
+            print('try to generate room')
+            room = self.create_room(blocks=blocks)
+
+        self.rooms.append(room)
+
+
 #################
 # Generation code
 #################
 
-def generate_room():
 
-    room = Room()
+dungeon = Dungeon()
 
-    for i in range(arguments.blocks):
-        room.expand()
-
-    return room
-
-
-room = None
-
-while room is None or room.has_holes():
-    print('try to generate room')
-    room = generate_room()
+for i in range(arguments.rooms):
+    dungeon.expand(blocks=arguments.blocks)
 
 
 ####################
@@ -241,8 +265,9 @@ pyplot.axes().set_aspect('equal', 'datalim')
 
 fig = pyplot.figure(1)
 
-for border in room.geometry_borders():
-    pyplot.plot(*zip(*border), color='#000000', linewidth=3, alpha=1)
+for room in dungeon.rooms:
+    for border in room.geometry_borders():
+        pyplot.plot(*zip(*border), color=room.color, linewidth=3, alpha=0.5)
 
 if arguments.filename:
     pyplot.savefig(arguments.filename)
