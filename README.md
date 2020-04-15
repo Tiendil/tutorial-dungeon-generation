@@ -13,5 +13,5 @@ python3 -m venv ./venv
 
 pip install -r ./requirements.txt
 
-python ./generator.py
+python ./generator.py --show
 ```
