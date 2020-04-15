@@ -1,5 +1,6 @@
 
 import enum
+import heapq
 import random
 import argparse
 import collections
@@ -48,10 +49,37 @@ def points_at_circle(x, y, radius):
     return points
 
 
-def nearest_coordinates_generator(center_x, center_y, max_intersection_radius):
-    for radius in range(max_intersection_radius):
-        for x, y in points_at_circle(center_x, center_y, radius):
-            yield (x, y)
+def path_length(point_from, point_to, filled_cells, max_path_length):
+
+    index = 0
+
+    heap = [(0, index, point_from)]
+
+    visited_points = {}
+
+    while True:
+
+        cost, _, point = heapq.heappop(heap)
+
+        if max_path_length <= cost:
+            return None
+
+        if point == point_to:
+            return cost
+
+        visited_points[point] = cost
+
+        for next_point in point.neighbours():
+            if next_point in visited_points:
+                continue
+
+            if next_point in filled_cells:
+                continue
+
+            index += 1
+            heapq.heappush(heap, (cost + 1, index, next_point))
+
+    return None
 
 
 ##############
@@ -87,6 +115,9 @@ class Position:
 
     def move(self, dx, dy):
         return Position(self.x + dx, self.y + dy)
+
+    def rotate_clockwise(self):
+        return Position(self.y, -self.x)
 
     def point(self):
         return (self.x, self.y)
@@ -141,6 +172,21 @@ class Border:
     def move(self, dx, dy):
         self.position = self.position.move(dx, dy)
 
+    def rotate_clockwise(self):
+        self.position = self.position.rotate_clockwise()
+
+        if self.direction == DIRECTION.LEFT:
+            self.direction = DIRECTION.UP
+
+        elif self.direction == DIRECTION.RIGHT:
+            self.direction = DIRECTION.DOWN
+
+        elif self.direction == DIRECTION.UP:
+            self.direction = DIRECTION.RIGHT
+
+        elif self.direction == DIRECTION.DOWN:
+            self.direction = DIRECTION.LEFT
+
     def connection_point(self):
         segment = self.geometry_borders()
 
@@ -176,6 +222,14 @@ class Block:
 
         for border in self.borders.values():
             border.move(dx, dy)
+
+    def rotate_clockwise(self):
+        self.position = self.position.rotate_clockwise()
+
+        for border in self.borders.values():
+            border.rotate_clockwise()
+
+        self.borders = {border.direction: border for border in self.borders.values()}
 
 
 class Room:
@@ -277,6 +331,10 @@ class Room:
         for block in self.blocks:
             block.move(dx, dy)
 
+    def rotate_clockwise(self):
+        for block in self.blocks:
+            block.rotate_clockwise()
+
     def borders(self):
         for block in self.blocks:
             for border in block.borders.values():
@@ -333,6 +391,42 @@ class Dungeon:
                 if not border.used:
                     yield border
 
+    def is_intersect_room(self, room):
+        return any(current_room.is_intersect(room) for current_room in self.rooms)
+
+    def room_positions_bruteforce(self, max_intersection_radius, new_room, dungeon_positions):
+
+        filled_cells = {position.point() for position in dungeon_positions}
+
+        for max_distance in range(0, max_intersection_radius):
+
+            for dungeon_door in self.door_borders():
+                for new_room_door in new_room.door_borders():
+
+                    for x, y in points_at_circle(*dungeon_door.position.point(), radius=max_distance):
+
+                        if (x, y) in filled_cells:
+                            continue
+
+                        for _ in range(4):
+                            new_room.rotate_clockwise()
+
+                            new_room.move(x - new_room_door.mirror().position.x,
+                                          y - new_room_door.mirror().position.y)
+
+                            if self.is_intersect_room(new_room):
+                                continue
+
+                            yield (max_distance, dungeon_door, new_room_door, x, y)
+
+    def block_positions(self):
+        positions = set()
+
+        for room in self.rooms:
+            positions |= room.block_positions()
+
+        return positions
+
     def expand(self, blocks, doors, max_intersection_radius=10):
         new_room = None
 
@@ -345,20 +439,27 @@ class Dungeon:
             self.rooms.append(new_room)
             return
 
-        dungeon_door = random.choice(list(self.door_borders()))
+        dungeon_positions = self.block_positions()
 
-        new_room_door = random.choice(list(new_room.door_borders()))
+        # ATTENTION: method room_positions_bruteforce make modifications of new_room
+        #            it is not very good decission
+        for max_distance, dungeon_door, new_room_door, x, y in self.room_positions_bruteforce(max_intersection_radius,
+                                                                                              new_room,
+                                                                                              dungeon_positions):
+            dungeon_door_out_position = dungeon_door.mirror().position
+            new_room_door_out_position = new_room_door.mirror().position
 
-        for x, y in nearest_coordinates_generator(*dungeon_door.position.point(), max_intersection_radius):
-            new_room.move(x - new_room_door.position.x,
-                          y - new_room_door.position.y)
+            filled_positions = dungeon_positions | new_room.block_positions()
 
-            for room in self.rooms:
-                if room.is_intersect(new_room):
-                    break
+            real_path_length = path_length(dungeon_door_out_position,
+                                           new_room_door_out_position,
+                                           filled_cells=filled_positions,
+                                           max_path_length=max_distance)
 
-            else:
-                break
+            if real_path_length is None:
+                continue
+
+            break
 
         else:
             raise Exception('Can not place room')
