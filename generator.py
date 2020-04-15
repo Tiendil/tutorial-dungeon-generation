@@ -11,7 +11,8 @@ parser = argparse.ArgumentParser(description='Generate dungeon.')
 parser.add_argument('-f', '--filename', metavar='FILENAME', type=str, default='last.png', help='save result to file')
 parser.add_argument('-s', '--show', action='store_true', default=False, help='show result in window')
 parser.add_argument('-b', '--blocks', type=int, default=10, help='blocks in room')
-parser.add_argument('-r', '--rooms', type=int, default=2, help='rooms in dungeon')
+parser.add_argument('-r', '--rooms', type=int, default=5, help='rooms in dungeon')
+parser.add_argument('-d', '--doors', type=int, default=3, help='doors in room')
 
 arguments = parser.parse_args()
 
@@ -92,12 +93,14 @@ class Position:
 
 
 class Border:
-    __slots__ = ('position', 'direction', 'internal')
+    __slots__ = ('position', 'direction', 'internal', 'can_has_door', 'used')
 
     def __init__(self, position, direction):
         self.position = position
         self.direction = direction
         self.internal = False
+        self.can_has_door = False
+        self.used = False
 
     def __eq__(self, other):
         return (self.position, self.direction) == (other.position, other.direction)
@@ -137,6 +140,12 @@ class Border:
 
     def move(self, dx, dy):
         self.position = self.position.move(dx, dy)
+
+    def connection_point(self):
+        segment = self.geometry_borders()
+
+        return ((segment[0][0] + segment[1][0]) / 2,
+                (segment[0][1] + segment[1][1]) / 2)
 
 
 class Block:
@@ -268,34 +277,81 @@ class Room:
         for block in self.blocks:
             block.move(dx, dy)
 
-    def base_position(self):
-        return self.blocks[-1].position
+    def borders(self):
+        for block in self.blocks:
+            for border in block.borders.values():
+                yield border
+
+    def door_borders(self):
+        for border in self.borders():
+            if border.can_has_door:
+                yield border
+
+    def place_doors(self, number):
+        borders = [border
+                   for border in self.borders()
+                   if not border.internal]
+
+        number = min(len(borders), number)
+
+        for border in random.sample(borders, number):
+            border.can_has_door = True
+
+
+class Corridor:
+    __slots__ = ('start_border', 'stop_border')
+
+    def __init__(self, start_border, stop_border):
+        self.start_border = start_border
+        self.stop_border = stop_border
+
+    def geometry_segments(self):
+        return [self.start_border.connection_point(),
+                self.stop_border.connection_point()]
 
 
 class Dungeon:
-    __slots__ = ('rooms',)
+    __slots__ = ('rooms', 'corridors')
 
     def __init__(self):
         self.rooms = []
+        self.corridors = []
 
-    def create_room(self, blocks):
+    def create_room(self, blocks, doors):
         room = Room()
 
         for i in range(blocks):
             room.expand()
 
+        room.place_doors(doors)
+
         return room
 
-    def expand(self, blocks, max_intersection_radius=10):
+    def door_borders(self):
+        for room in self.rooms:
+            for border in room.door_borders():
+                if not border.used:
+                    yield border
+
+    def expand(self, blocks, doors, max_intersection_radius=10):
         new_room = None
 
         while new_room is None or new_room.has_holes():
             print('try to generate room')
-            new_room = self.create_room(blocks=blocks)
+            new_room = self.create_room(blocks=blocks,
+                                        doors=doors)
 
-        for x, y in nearest_coordinates_generator(0, 0, max_intersection_radius):
-            new_room.move(x - new_room.base_position().x,
-                          y - new_room.base_position().y)
+        if len(self.rooms) == 0:
+            self.rooms.append(new_room)
+            return
+
+        dungeon_door = random.choice(list(self.door_borders()))
+
+        new_room_door = random.choice(list(new_room.door_borders()))
+
+        for x, y in nearest_coordinates_generator(*dungeon_door.position.point(), max_intersection_radius):
+            new_room.move(x - new_room_door.position.x,
+                          y - new_room_door.position.y)
 
             for room in self.rooms:
                 if room.is_intersect(new_room):
@@ -309,6 +365,12 @@ class Dungeon:
 
         self.rooms.append(new_room)
 
+        # ATTENTION: it is very bad decission, to store objects by links in two different parent objects
+        #            beteer solution will be to store threre ID's or something similar
+        new_corridor = Corridor(dungeon_door, new_room_door)
+
+        self.corridors.append(new_corridor)
+
 
 #################
 # Generation code
@@ -318,7 +380,8 @@ class Dungeon:
 dungeon = Dungeon()
 
 for i in range(arguments.rooms):
-    dungeon.expand(blocks=arguments.blocks)
+    dungeon.expand(blocks=arguments.blocks,
+                   doors=arguments.doors)
 
 
 ####################
@@ -331,7 +394,15 @@ fig = pyplot.figure(1)
 
 for room in dungeon.rooms:
     for border in room.geometry_borders():
-        pyplot.plot(*zip(*border), color=room.color, linewidth=3, alpha=0.5)
+        pyplot.plot(*zip(*border), color=room.color, linewidth=3, alpha=1.0)
+
+for room in dungeon.rooms:
+    for door_border in room.door_borders():
+        pyplot.plot(*zip(*door_border.geometry_borders()), color=room.color, linewidth=6, alpha=0.5)
+
+
+for corridor in dungeon.corridors:
+    pyplot.plot(*zip(*corridor.geometry_segments()), color='#000000', linewidth=1, alpha=1)
 
 if arguments.filename:
     pyplot.savefig(arguments.filename)
