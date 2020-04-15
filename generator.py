@@ -35,6 +35,24 @@ def random_color():
     return '#' + ''.join([random.choice('0123456789') for i in range(6)])
 
 
+def points_at_circle(x, y, radius):
+    points = set()
+
+    for i in range(radius + 1):
+        points.add((x + i, y + (radius - i)))
+        points.add((x + i, y - (radius - i)))
+        points.add((x - i, y + (radius - i)))
+        points.add((x - i, y - (radius - i)))
+
+    return points
+
+
+def nearest_coordinates_generator(center_x, center_y, max_intersection_radius):
+    for radius in range(max_intersection_radius):
+        for x, y in points_at_circle(center_x, center_y, radius):
+            yield (x, y)
+
+
 ##############
 # Core classes
 ##############
@@ -60,6 +78,11 @@ class Position:
                 Position(self.x, self.y - 1),
                 Position(self.x + 1, self.y),
                 Position(self.x, self.y + 1)}
+
+    def area(self):
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                yield Position(self.x + dx, self.y + dy)
 
     def move(self, dx, dy):
         return Position(self.x + dx, self.y + dy)
@@ -112,6 +135,9 @@ class Border:
             return [self.position.move(1, 0).point(),
                     self.position.move(0, 0).point()]
 
+    def move(self, dx, dy):
+        self.position = self.position.move(dx, dy)
+
 
 class Block:
     __slots__ = ('position', 'borders')
@@ -136,6 +162,12 @@ class Block:
                     own_border.internal = True
                     other_border.internal = True
 
+    def move(self, dx, dy):
+        self.position = self.position.move(dx, dy)
+
+        for border in self.borders.values():
+            border.move(dx, dy)
+
 
 class Room:
     __slots__ = ('blocks', 'color')
@@ -146,6 +178,14 @@ class Room:
 
     def block_positions(self):
         return {block.position for block in self.blocks}
+
+    def area_positions(self):
+        area = set()
+
+        for position in self.block_positions():
+            area |= set(position.area())
+
+        return area
 
     def allowed_new_block_positions(self):
         allowed_positions = set()
@@ -221,6 +261,16 @@ class Room:
 
         return bool(all_positions)
 
+    def is_intersect(self, room):
+        return bool(self.area_positions() & room.block_positions())
+
+    def move(self, dx, dy):
+        for block in self.blocks:
+            block.move(dx, dy)
+
+    def base_position(self):
+        return self.blocks[-1].position
+
 
 class Dungeon:
     __slots__ = ('rooms',)
@@ -236,14 +286,28 @@ class Dungeon:
 
         return room
 
-    def expand(self, blocks):
-        room = None
+    def expand(self, blocks, max_intersection_radius=10):
+        new_room = None
 
-        while room is None or room.has_holes():
+        while new_room is None or new_room.has_holes():
             print('try to generate room')
-            room = self.create_room(blocks=blocks)
+            new_room = self.create_room(blocks=blocks)
 
-        self.rooms.append(room)
+        for x, y in nearest_coordinates_generator(0, 0, max_intersection_radius):
+            new_room.move(x - new_room.base_position().x,
+                          y - new_room.base_position().y)
+
+            for room in self.rooms:
+                if room.is_intersect(new_room):
+                    break
+
+            else:
+                break
+
+        else:
+            raise Exception('Can not place room')
+
+        self.rooms.append(new_room)
 
 
 #################
