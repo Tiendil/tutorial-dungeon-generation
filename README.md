@@ -1,5 +1,7 @@
 # Simple dungeon generator
 
+[Tutorial](https://tiendil.org/dungeon-generation-from-simple-to-complex/) (in Russian).
+
 ## install and run
 
 ```
