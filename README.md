@@ -2,6 +2,8 @@
 
 [Tutorial](https://tiendil.org/dungeon-generation-from-simple-to-complex/) (in Russian).
 
+![Example](/images/step_6.png)
+
 ## install and run
 
 ```
