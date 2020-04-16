@@ -17,5 +17,8 @@ python3 -m venv ./venv
 
 pip install -r ./requirements.txt
 
+# generator has few options
+python ./generator.py --help
+
 python ./generator.py --show
 ```
