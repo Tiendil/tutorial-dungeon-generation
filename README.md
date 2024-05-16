@@ -1,6 +1,7 @@
 # Simple dungeon generator
 
-[Tutorial](https://tiendil.org/dungeon-generation-from-simple-to-complex/) (in Russian).
+[Tutorial](https://tiendil.org/en/posts/dungeon-generation-from-simple-to-complex) [en].
+[Tutorial](https://tiendil.org/ru/posts/dungeon-generation-from-simple-to-complex) [ru].
 
 ![Example](/images/step_6.png)
 
